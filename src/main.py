@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from datetime import date, datetime
 
 from core.pokeapi import (
     build_candidates,
@@ -87,14 +88,21 @@ class PokemonAnalisysApp:
 
             result = analyze_decklists(decklists)
 
-            BASE_DIR = Path(__file__).resolve().parents[1]
+            # Caminho do Desktop do usuário
+            desktop = Path.home() / "Desktop"
 
-            analysis_dir = BASE_DIR / "Deck_Analysis"
-            analysis_dir.mkdir(exist_ok=True)  
+            # Pasta Deck_Analysis no Desktop
+            analysis_dir = desktop / "Deck_Analysis"
 
-            date_str = MIN_DATE.strftime("%d%m%y")
+            # cria a pasta se não existir
+            analysis_dir.mkdir(parents=True, exist_ok=True)
+
+            # data atual
+            date_str = datetime.now().strftime("%Y%m%d")
+
+            # arquivo final
             out_file = analysis_dir / f"analysis_{found}_deck_{date_str}.txt"
-
+            
             write_analysis_txt(
                 out_path=out_file,
                 found_name=found,

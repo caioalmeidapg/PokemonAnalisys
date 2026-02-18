@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from core.decklist import fetch_decklist
 from core.analysis import analyze_decklists
 from core.pokeapi import build_candidates, resolve_pokemon_name_from_candidates
-from core.limitless_jp import find_pokemon_in_limitless_since
+from core.limitless_jp import find_pokemon_in_limitless_since, list_winner_decks_since
 
 DEFAULT_MIN_DATE = date(2026, 1, 23)
 
@@ -185,7 +185,7 @@ def cards_above_50_not_core(pokemon: str):
         "errors_count": len(errors),
     }
 
-#TESTE
+
 @app.get("/v1/deck/base")
 def build_base_deck(pokemon: str):
     if not pokemon or not pokemon.strip():
@@ -316,4 +316,68 @@ def build_base_deck(pokemon: str):
         "total_cards": total_cards,
         "deck_base": base_deck,  # lista por categoria com qty e % presença
         "errors_count": len(errors),
+    }
+
+@app.get("/v1/limitless/top10")
+def top10_winner_decks():
+    min_date = DEFAULT_MIN_DATE
+
+    rows = list_winner_decks_since(min_date=min_date)
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nenhum torneio encontrado desde {min_date}.",
+        )
+
+    counts = {}
+    examples = {}
+
+    for r in rows:
+
+        if not r.alts:
+            continue
+
+        # usa apenas o primeiro alt (pokémon principal)
+        main = r.alts[0].strip().lower()
+
+        counts[main] = counts.get(main, 0) + 1
+
+        if main not in examples:
+            examples[main] = {
+                "example_date": str(r.row_date),
+                "example_tournament_url": r.tournament_url,
+                "example_decklist_url": r.decklist_url,
+            }
+
+    if not counts:
+        raise HTTPException(
+            status_code=502,
+            detail="Não foi possível extrair os vencedores.",
+        )
+
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+    top10 = []
+
+    for i, (pokemon, cnt) in enumerate(ranked, start=1):
+
+        ex = examples[pokemon]
+
+        top10.append(
+            {
+                "rank": i,
+                "main_pokemon": pokemon,
+                "wins_count": cnt,
+                "example_date": ex["example_date"],
+                "example_tournament_url": ex["example_tournament_url"],
+                "example_decklist_url": ex["example_decklist_url"],
+            }
+        )
+
+    return {
+        "min_date_fixed": str(min_date),
+        "total_rows_scanned": len(rows),
+        "unique_main_pokemon": len(counts),
+        "top10": top10,
     }

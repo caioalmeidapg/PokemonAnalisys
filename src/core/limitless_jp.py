@@ -146,3 +146,82 @@ def find_pokemon_in_limitless_since(
             break
 
     return matches
+
+def list_winner_decks_since(
+    min_date: date,
+    timeout: int = 20,
+    max_pages: int = 500,
+) -> list[MatchRow]:
+    """
+    Varre páginas do Limitless JP e retorna todas as linhas vencedoras (MatchRow)
+    com row_date >= min_date, sem filtrar por pokemon específico.
+    """
+    matches: list[MatchRow] = []
+    prev_hash: Optional[str] = None
+
+    for page in range(1, max_pages + 1):
+        url = _page_url(page)
+        r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+
+        # anti-loop: se o conteúdo repetir, paramos
+        h = hashlib.sha256(r.content).hexdigest()
+        if prev_hash == h:
+            break
+        prev_hash = h
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        trs = _extract_rows(soup)
+
+        if not trs:
+            break
+
+        should_stop = False
+
+        for tr in trs:
+            data_date = tr.get("data-date")
+            if not data_date:
+                continue
+
+            row_date = _parse_iso_date(data_date)
+
+            if row_date < min_date:
+                should_stop = True
+                break
+
+            tds = tr.find_all("td", recursive=False)
+            if len(tds) < 4:
+                continue
+
+            a_date = tds[0].find("a", href=True)
+            tournament_url = a_date["href"] if a_date else None
+
+            winner_td = tds[3]
+
+            decklist_url = None
+            a_deck = winner_td.find("a", href=True)
+            if a_deck:
+                href = a_deck["href"]
+                if "/decks/list/" in href:
+                    decklist_url = href
+
+            imgs = winner_td.find_all("img")
+            alts: list[str] = []
+            for img in imgs:
+                alt = (img.get("alt") or "").strip().lower()
+                if alt:
+                    alts.append(alt)
+
+            matches.append(
+                MatchRow(
+                    row_date=row_date,
+                    alts=alts,
+                    tournament_url=tournament_url,
+                    decklist_url=decklist_url,
+                )
+            )
+
+        if should_stop:
+            break
+
+    return matches
